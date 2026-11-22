@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Quizbox · Musik</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --grund: #26282b; --flaeche: #33363a; --rand: #44484d;
+    --text: #eceae6; --leise: #a19d96;
+    --terracotta: #c46a4a; --salie: #6f8f7a; --oker: #c9a24a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--grund); color: var(--text);
+    font-family: 'DM Sans', system-ui, sans-serif; }
+  main { max-width: 480px; margin: 0 auto; min-height: 100%; padding: 20px 18px 28px;
+    display: flex; flex-direction: column; gap: 18px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; }
+  h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+  h1 span { color: var(--terracotta); }
+  .zaehler { color: var(--leise); font-size: 15px; font-variant-numeric: tabular-nums; }
+
+  .scheibe { align-self: center; width: 180px; height: 180px; border-radius: 50%;
+    background: radial-gradient(circle, var(--grund) 0 14%, var(--terracotta) 14.5% 17%, #1c1d20 17.5% 100%);
+    box-shadow: inset 0 0 0 1px var(--rand); position: relative; margin: 6px 0; }
+  .scheibe::after { content: ""; position: absolute; inset: 12%; border-radius: 50%;
+    background: repeating-radial-gradient(circle, transparent 0 5px, rgba(255,255,255,.04) 5px 6px); }
+  .scheibe.dreht { animation: drehen 1.6s linear infinite; }
+  @keyframes drehen { to { transform: rotate(360deg); } }
+
+  .balken { height: 6px; background: var(--flaeche); border-radius: 3px; overflow: hidden; }
+  .balken div { height: 100%; width: 0; background: var(--terracotta); }
+
+  .leiter { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  button { font: inherit; border: 0; border-radius: 14px; cursor: pointer; color: var(--text); }
+  .stufe { background: var(--flaeche); padding: 16px 4px 12px; display: flex; flex-direction: column;
+    align-items: center; gap: 4px; box-shadow: inset 0 0 0 1px var(--rand); }
+  .stufe b { font-size: 20px; }
+  .stufe small { color: var(--leise); font-size: 12px; }
+  .stufe.aktiv { box-shadow: inset 0 0 0 2px var(--terracotta); }
+  .stufe.gehoert { background: #3b3e43; }
+  .stufe:disabled { opacity: .35; cursor: default; }
+
+  .loesung { background: var(--flaeche); border-radius: 16px; padding: 18px; text-align: center;
+    min-height: 92px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+  .loesung .titel { font-size: 22px; font-weight: 700; color: var(--terracotta); }
+  .loesung .kuenstler { font-size: 17px; }
+  .loesung .hinweis { color: var(--leise); font-size: 15px; }
+
+  .aktionen { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: auto; }
+  .gross { padding: 16px; font-size: 17px; font-weight: 600; }
+  .zeigen { background: var(--salie); }
+  .weiter { background: var(--terracotta); }
+  footer { color: var(--leise); font-size: 12px; text-align: center; }
+  footer a { color: var(--leise); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Quizbox <span>·</span> <span id="t-titel">Intro</span></h1>
+    <div class="zaehler" id="zaehler">–</div>
+  </header>
+
+  <div class="scheibe" id="scheibe"></div>
+  <div class="balken"><div id="fortschritt"></div></div>
+
+  <div class="leiter" id="leiter"></div>
+
+  <div class="loesung" id="loesung"><div class="hinweis" id="hinweis">…</div></div>
+
+  <div class="aktionen">
+    <button class="gross zeigen" id="zeigen"></button>
+    <button class="gross weiter" id="weiter"></button>
+  </div>
+
+  <footer>♪ <a href="https://www.deezer.com" target="_blank" rel="noopener">Deezer</a> · <span id="t-fuss">30-s-Fragmente</span></footer>
+</main>
+
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor('#26282b'); tg.setBackgroundColor('#26282b'); } catch (e) {} }
+
+  // ---- Sprache: Telegram-Sprache oder ?lang=nl / ?lang=de
+  const url = new URLSearchParams(location.search);
+  const tgSprache = tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code;
+  const sprache = (url.get('lang') || tgSprache || 'de').slice(0, 2) === 'nl' ? 'nl' : 'de';
+  const T = {
+    de: { titel: 'Intro', zeigen: 'Lösung', weiter: 'Nächstes ▸', ende: 'Fertig ✓', laden: 'Lade Lied …',
+          tippe: 'Tippe auf 2 s und rate!', kein: 'Kein Fragment verfügbar – weiter.', fehler: 'Deezer nicht erreichbar.',
+          leer: 'Keine Lieder übergeben.', punkte: 'Punkte', fertig: 'Runde beendet 🎉', fuss: '30-s-Fragmente' },
+    nl: { titel: 'Intro', zeigen: 'Oplossing', weiter: 'Volgende ▸', ende: 'Klaar ✓', laden: 'Nummer laden …',
+          tippe: 'Tik op 2 s en raad!', kein: 'Geen fragment beschikbaar – verder.', fehler: 'Deezer niet bereikbaar.',
+          leer: 'Geen nummers meegegeven.', punkte: 'punten', fertig: 'Ronde voorbij 🎉', fuss: 'fragmenten van 30 s' },
+  }[sprache];
+  document.documentElement.lang = sprache;
+  document.getElementById('t-titel').textContent = T.titel;
+  document.getElementById('t-fuss').textContent = T.fuss;
+
+  // ---- Lieder: startapp=p_1_2_3 / d_123, oder ?ids=1,2,3 / ?id=123
+  const start = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || url.get('tgWebAppStartParam') || '';
+  let ids = [];
+  if (/^[pd]_/.test(start)) ids = start.slice(2).split('_');
+  else if (url.get('ids')) ids = url.get('ids').split(',');
+  else if (url.get('id')) ids = [url.get('id')];
+  ids = ids.map(s => s.trim()).filter(s => /^\d+$/.test(s));
+
+  // ---- Leiter: Sekunden und Punkte
+  const STUFEN = [ { s: 2, p: 3 }, { s: 5, p: 2 }, { s: 10, p: 1 }, { s: 30, p: '½' } ];
+
+  const $ = id => document.getElementById(id);
+  const leiter = $('leiter'), loesung = $('loesung'), scheibe = $('scheibe'), fortschritt = $('fortschritt');
+  $('zeigen').textContent = T.zeigen;
+  $('weiter').textContent = T.weiter;
+
+  let pos = 0, lied = null, audio = null, stopp = null, anim = null, freigeschaltet = 0, aufgeloest = false;
+
+  // Deezer per JSONP (die API erlaubt kein CORS)
+  let jsonpNr = 0;
+  function deezer(pfad) {
+    return new Promise((ok, nok) => {
+      const name = '__dz' + (++jsonpNr);
+      const s = document.createElement('script');
+      const timer = setTimeout(() => { aufraeumen(); nok(new Error('timeout')); }, 8000);
+      function aufraeumen() { clearTimeout(timer); delete window[name]; s.remove(); }
+      window[name] = daten => { aufraeumen(); ok(daten); };
+      s.onerror = () => { aufraeumen(); nok(new Error('netz')); };
+      s.src = `https://api.deezer.com${pfad}${pfad.includes('?') ? '&' : '?'}output=jsonp&callback=${name}`;
+      document.head.appendChild(s);
+    });
+  }
+
+  function hinweis(text) { loesung.innerHTML = `<div class="hinweis">${text}</div>`; }
+
+  function leiterZeichnen() {
+    leiter.innerHTML = '';
+    STUFEN.forEach((st, i) => {
+      const b = document.createElement('button');
+      b.className = 'stufe' + (i < freigeschaltet ? ' gehoert' : '') + (i === freigeschaltet - 1 ? ' aktiv' : '');
+      b.innerHTML = `<b>${st.s} s</b><small>${st.p} ${T.punkte}</small>`;
+      b.disabled = !lied || aufgeloest || i > freigeschaltet;   // nur nächste Stufe oder schon gehörte
+      b.onclick = () => abspielen(i);
+      leiter.appendChild(b);
+    });
+  }
+
+  function anhalten() {
+    clearTimeout(stopp); cancelAnimationFrame(anim);
+    if (audio) { audio.pause(); audio.volume = 1; }
+    scheibe.classList.remove('dreht');
+  }
+
+  function abspielen(i) {
+    if (!audio) return;
+    anhalten();
+    if (i + 1 > freigeschaltet) freigeschaltet = i + 1;
+    leiterZeichnen();
+    const dauer = STUFEN[i].s * 1000;
+    audio.currentTime = 0; audio.volume = 1;
+    audio.play().catch(() => {});
+    scheibe.classList.add('dreht');
+    if (tg && tg.HapticFeedback) try { tg.HapticFeedback.impactOccurred('light'); } catch (e) {}
+    const t0 = performance.now();
+    const schritt = () => {
+      const t = performance.now() - t0;
+      fortschritt.style.width = Math.min(100, t / dauer * 100) + '%';
+      if (t > dauer - 300) audio.volume = Math.max(0, (dauer - t) / 300);   // kurz ausblenden
+      if (t < dauer) anim = requestAnimationFrame(schritt);
+    };
+    anim = requestAnimationFrame(schritt);
+    stopp = setTimeout(anhalten, dauer);
+  }
+
+  function aufloesen() {
+    if (!lied || aufgeloest) return;
+    aufgeloest = true;
+    loesung.innerHTML = '';
+    const a = document.createElement('div'); a.className = 'titel'; a.textContent = lied.title_short || lied.title;
+    const b = document.createElement('div'); b.className = 'kuenstler'; b.textContent = lied.artist ? lied.artist.name : '';
+    loesung.append(a, b);
+    leiterZeichnen();
+    if (tg && tg.HapticFeedback) try { tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
+  }
+
+  async function laden() {
+    anhalten();
+    fortschritt.style.width = '0';
+    lied = null; freigeschaltet = 0; aufgeloest = false;
+    $('zaehler').textContent = ids.length ? `${Math.min(pos + 1, ids.length)} / ${ids.length}` : '–';
+    $('weiter').textContent = pos >= ids.length - 1 ? T.ende : T.weiter;
+    leiterZeichnen();
+    if (!ids.length) { hinweis(T.leer); return; }
+    if (pos >= ids.length) { hinweis(T.fertig); $('weiter').disabled = true; return; }
+    hinweis(T.laden);
+    try {
+      const d = await deezer(`/track/${ids[pos]}`);   // Fragment-Link immer frisch holen
+      if (!d || d.error || !d.preview) { hinweis(T.kein); return; }
+      lied = d;
+      audio = new Audio(d.preview);
+      audio.preload = 'auto';
+      hinweis(T.tippe);
+      leiterZeichnen();
+    } catch (e) { hinweis(T.fehler); }
+  }
+
+  $('zeigen').onclick = aufloesen;
+  $('weiter').onclick = () => { pos++; laden(); };
+  laden();
+})();
+</script>
+</body>
+</html>
