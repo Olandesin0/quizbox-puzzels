@@ -72,6 +72,20 @@
   .option.falsch { background: var(--terracotta); opacity: 1; box-shadow: none; }
   .option.falsch small { color: var(--text); }
 
+  .wahl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .wahl button { padding: 18px 10px; font-size: 17px; font-weight: 600; }
+  .wahl .weiss { background: var(--salie); }
+  .wahl .tipp { background: var(--flaeche); box-shadow: inset 0 0 0 1px var(--rand); }
+  .wahl .tipp small { display: block; font-size: 12px; font-weight: 400; color: var(--leise); margin-top: 2px; }
+  .wahl button:disabled { opacity: .35; }
+  .karte-loesung { background: var(--flaeche); border-radius: 16px; padding: 16px; text-align: center; display: flex; flex-direction: column; gap: 4px; }
+  .karte-loesung .titel { font-size: 21px; font-weight: 700; color: var(--terracotta); }
+  .karte-loesung .kuenstler { font-size: 16px; }
+  .karte-loesung .frage { color: var(--leise); font-size: 14px; margin-top: 8px; }
+  .urteil { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .urteil button { padding: 16px; font-size: 18px; font-weight: 700; }
+  .urteil .ja { background: var(--salie); }
+  .urteil .nein { background: var(--terracotta); }
   .meldung { text-align: center; font-size: 16px; color: var(--leise); min-height: 24px; }
   .meldung.gut { color: var(--salie); font-weight: 700; }
   .meldung.schlecht { color: var(--terracotta); font-weight: 700; }
@@ -123,7 +137,7 @@
     </div>
     <div class="balken"><div id="fortschritt"></div></div>
     <div class="leiter" id="leiter"></div>
-    <div class="optionen" id="optionen"></div>
+    <div id="bereich"></div>
     <div class="meldung" id="meldung"></div>
     <div class="aktionen">
       <button class="gross leise-knopf" id="passen"></button>
@@ -154,14 +168,16 @@
   const T = {
     de: { spieler: 'Wie viele spielen mit?', name: 'Spieler', los: 'Los geht’s ▸', laden: 'Lade Lieder …',
           bereit: n => `${n} Lieder bereit`, fehler: 'Deezer nicht erreichbar.', leer: 'Keine Lieder übergeben.',
-          zuWenig: 'Mindestens 1 Lied mit Fragment nötig.', dran: 'ist dran', tippe: 'Tippe auf 2 s – dann raten!',
-          erstHoeren: 'Erst reinhören …', punkte: 'Pkt.', passen: 'Weiß nicht', weiter: 'Nächstes ▸', auswertung: 'Auswertung ▸',
+          zuWenig: 'Mindestens 1 Lied mit Fragment nötig.', dran: 'ist dran', tippe: 'Tippe auf 2 s und rate laut!',
+          erstHoeren: 'Erst reinhören …', punkte: 'Pkt.', passen: 'Weiß nicht', weissEs: 'Ich weiß es!', tipp: '💡 4 Optionen', tippKlein: 'halbe Punkte',
+          frage: 'Richtig geraten?', ja: '✓ Richtig', nein: '✗ Falsch', weiter: 'Nächstes ▸', auswertung: 'Auswertung ▸',
           richtig: p => `Richtig! +${p}`, falsch: 'Leider falsch', gepasst: 'Gepasst – 0 Punkte',
           ende: 'Endstand 🎉', neu: 'Gleiche Lieder nochmal', fuss: '30-s-Fragmente' },
     nl: { spieler: 'Hoeveel spelers doen mee?', name: 'Speler', los: 'Beginnen ▸', laden: 'Nummers laden …',
           bereit: n => `${n} nummers klaar`, fehler: 'Deezer niet bereikbaar.', leer: 'Geen nummers meegegeven.',
-          zuWenig: 'Minstens 1 nummer met fragment nodig.', dran: 'is aan de beurt', tippe: 'Tik op 2 s – en raad!',
-          erstHoeren: 'Eerst even luisteren …', punkte: 'pnt', passen: 'Weet niet', weiter: 'Volgende ▸', auswertung: 'Uitslag ▸',
+          zuWenig: 'Minstens 1 nummer met fragment nodig.', dran: 'is aan de beurt', tippe: 'Tik op 2 s en raad hardop!',
+          erstHoeren: 'Eerst even luisteren …', punkte: 'pnt', passen: 'Weet niet', weissEs: 'Ik weet het!', tipp: '💡 4 keuzes', tippKlein: 'halve punten',
+          frage: 'Goed geraden?', ja: '✓ Goed', nein: '✗ Fout', weiter: 'Volgende ▸', auswertung: 'Uitslag ▸',
           richtig: p => `Goed! +${p}`, falsch: 'Helaas fout', gepasst: 'Gepast – 0 punten',
           ende: 'Eindstand 🎉', neu: 'Zelfde nummers opnieuw', fuss: 'fragmenten van 30 s' },
   }[sprache];
@@ -192,6 +208,8 @@
   ].map(([titel, kuenstler]) => ({ titel, kuenstler }));
 
   const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  const SCHLECHT = /\b(live|karaoke|instrumental|remix|mix|acoustic|akustik|unplugged|version|edit|demo|intro|outro|medley)\b/i;
+  const sauber = t => (t || '').replace(/\s*[\(\[].*?[\)\]]/g, '').replace(/\s+-\s+.*$/, '').trim();
   const mischen = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
   // ---------- Deezer per JSONP (die API erlaubt kein CORS)
@@ -211,11 +229,16 @@
 
   // ---------- Zustand
   const STUFEN = [ { s: 2, p: 3 }, { s: 5, p: 2 }, { s: 10, p: 1 }, { s: 30, p: 0.5 } ];
-  const pktText = p => p === 0.5 ? '½' : String(p).replace('.5', '½');
+  const pktText = p => {
+    const ganz = Math.floor(p + 1e-9), rest = Math.round((p - ganz) * 4);
+    const bruch = ['', '¼', '½', '¾'][rest];
+    return ganz === 0 && bruch ? bruch : `${ganz}${bruch}`;
+  };
   let lieder = [];          // { id, titel, kuenstler, preview }
   let spieler = [];         // { name, punkte }
   let anzahl = 2;
   let pos = 0, audio = null, stopp = null, anim = null, freigeschaltet = 0, entschieden = false, optionen = [];
+  let modus = 'frei';      // frei → (tipp | urteil) → fertig
 
   function zeigeAnsicht(id) {
     document.querySelectorAll('.ansicht').forEach(v => v.classList.toggle('an', v.id === id));
@@ -257,11 +280,24 @@
     lieder = ergebnisse
       .map(e => e.status === 'fulfilled' ? e.value : null)
       .filter(d => d && !d.error && d.preview)
-      .map(d => ({ id: d.id, titel: d.title_short || d.title, kuenstler: d.artist ? d.artist.name : '', preview: d.preview }));
+      .map(d => ({ id: d.id, titel: d.title_short || d.title, kuenstler: d.artist ? d.artist.name : '',
+                    kuenstlerId: d.artist ? d.artist.id : null, preview: d.preview, gleicherKuenstler: [] }));
     if (!lieder.length) {
       $('start-meldung').textContent = ergebnisse.every(e => e.status === 'rejected') ? T.fehler : T.zuWenig;
       return;
     }
+    // Andere bekannte Titel derselben Künstler (für eine schwierige falsche Option)
+    const kuenstlerIds = [...new Set(lieder.map(l => l.kuenstlerId).filter(Boolean))];
+    const tops = await Promise.allSettled(kuenstlerIds.map(id => deezer(`/artist/${id}/top?limit=15`)));
+    const topNach = {};
+    tops.forEach((t, i) => { if (t.status === 'fulfilled' && t.value && Array.isArray(t.value.data)) topNach[kuenstlerIds[i]] = t.value.data; });
+    lieder.forEach(l => {
+      const eigen = norm(sauber(l.titel));
+      l.gleicherKuenstler = [...new Set((topNach[l.kuenstlerId] || [])
+        .filter(t => !SCHLECHT.test(`${t.title || ''} ${t.title_version || ''}`))
+        .map(t => sauber(t.title_short || t.title))
+        .filter(t => t && norm(t) !== eigen && !norm(t).includes(eigen) && !eigen.includes(norm(t))))];
+    });
     lieder = mischen(lieder);
     $('start-meldung').textContent = T.bereit(lieder.length);
     $('los').disabled = false;
@@ -278,16 +314,23 @@
 
   // ---------- Spiel
   function optionenBauen(lied) {
-    const gesehen = new Set([norm(lied.titel)]);
-    const kandidaten = mischen(lieder.filter(l => l !== lied)).concat(mischen(RESERVE));
+    const gesehen = new Set([norm(sauber(lied.titel))]);
     const falsche = [];
+    // 1) schwierige Option: anderer Titel derselben Künstler
+    const gleich = mischen(lied.gleicherKuenstler)[0];
+    if (gleich) { gesehen.add(norm(gleich)); falsche.push({ titel: gleich, kuenstler: lied.kuenstler }); }
+    // 2) Rest: andere Lieder der Runde, dann Reserve – jeweils andere Künstler
+    const kuenstlerGesehen = new Set([norm(lied.kuenstler)]);
+    const kandidaten = mischen(lieder.filter(l => l !== lied)).concat(mischen(RESERVE));
     for (const k of kandidaten) {
-      const n = norm(k.titel);
-      if (gesehen.has(n)) continue;
-      gesehen.add(n); falsche.push(k);
       if (falsche.length === 3) break;
+      const n = norm(sauber(k.titel)), kn = norm(k.kuenstler);
+      if (gesehen.has(n) || kuenstlerGesehen.has(kn)) continue;
+      gesehen.add(n); kuenstlerGesehen.add(kn);
+      falsche.push({ titel: sauber(k.titel) || k.titel, kuenstler: k.kuenstler });
     }
-    return mischen([{ ...lied, richtig: true }, ...falsche.map(f => ({ titel: f.titel, kuenstler: f.kuenstler, richtig: false }))]);
+    return mischen([{ titel: lied.titel, kuenstler: lied.kuenstler, richtig: true },
+                    ...falsche.map(f => ({ ...f, richtig: false }))]);
   }
 
   function leiterZeichnen() {
@@ -297,26 +340,59 @@
       b.className = 'stufe' + (i < freigeschaltet ? ' gehoert' : '') + (i === freigeschaltet - 1 ? ' aktiv' : '');
       b.innerHTML = `<b>${st.s} s</b><small>${pktText(st.p)} ${T.punkte}</small>`;
       // vor der Entscheidung: nur nächste Stufe oder schon gehörte; danach alles frei zum Nachhören
-      b.disabled = !audio || (!entschieden && i > freigeschaltet);
+      b.disabled = !audio || (!entschieden && (modus === 'urteil' || i > freigeschaltet));
       b.onclick = () => abspielen(i);
       box.appendChild(b);
     });
   }
 
-  function optionenZeichnen() {
-    const box = $('optionen'); box.innerHTML = '';
+  function loesungKarte(mitFrage) {
+    const lied = lieder[pos];
+    const k = document.createElement('div'); k.className = 'karte-loesung';
+    const a = document.createElement('div'); a.className = 'titel'; a.textContent = lied.titel;
+    const b = document.createElement('div'); b.className = 'kuenstler'; b.textContent = lied.kuenstler;
+    k.append(a, b);
+    if (mitFrage) { const f = document.createElement('div'); f.className = 'frage'; f.textContent = T.frage; k.append(f); }
+    return k;
+  }
+
+  function bereichZeichnen() {
+    const box = $('bereich'); box.innerHTML = '';
+    if (modus === 'frei') {
+      const w = document.createElement('div'); w.className = 'wahl';
+      const weiss = document.createElement('button'); weiss.className = 'weiss'; weiss.textContent = T.weissEs;
+      const tipp = document.createElement('button'); tipp.className = 'tipp';
+      tipp.innerHTML = `${T.tipp}<small>${T.tippKlein}</small>`;
+      weiss.disabled = tipp.disabled = freigeschaltet === 0;
+      weiss.onclick = () => { anhalten(); modus = 'urteil'; $('passen').disabled = true; meldung(''); bereichZeichnen(); leiterZeichnen(); };
+      tipp.onclick = () => { modus = 'tipp'; meldung(''); bereichZeichnen(); };
+      w.append(weiss, tipp); box.append(w);
+      return;
+    }
+    if (modus === 'urteil') {
+      box.append(loesungKarte(true));
+      const u = document.createElement('div'); u.className = 'urteil'; u.style.marginTop = '10px';
+      const ja = document.createElement('button'); ja.className = 'ja'; ja.textContent = T.ja;
+      const nein = document.createElement('button'); nein.className = 'nein'; nein.textContent = T.nein;
+      ja.onclick = () => werten(true, 1); nein.onclick = () => werten(false, 1);
+      u.append(ja, nein); box.append(u);
+      return;
+    }
+    if (modus === 'fertig' && !optionen.some(o => o.gewaehlt)) { box.append(loesungKarte(false)); return; }
+    // tipp oder fertig nach Tipp: 4 Optionen
+    const g = document.createElement('div'); g.className = 'optionen';
     optionen.forEach(o => {
-      const b = document.createElement('button');
-      b.className = 'option';
+      const b = document.createElement('button'); b.className = 'option';
       const t = document.createElement('b'); t.textContent = o.titel;
       const k = document.createElement('small'); k.textContent = o.kuenstler;
       b.append(t, k);
-      b.disabled = entschieden || freigeschaltet === 0;
+      b.disabled = entschieden;
       if (entschieden && o.richtig) b.classList.add('richtig');
       if (entschieden && o.gewaehlt && !o.richtig) b.classList.add('falsch');
-      b.onclick = () => antworten(o);
-      box.appendChild(b);
+      b.onclick = () => { o.gewaehlt = true; werten(o.richtig, 0.5); };
+      g.appendChild(b);
     });
+    box.append(g);
   }
 
   function meldung(text, art) { const m = $('meldung'); m.textContent = text; m.className = 'meldung' + (art ? ' ' + art : ''); }
@@ -325,7 +401,7 @@
     anhalten();
     const lied = lieder[pos];
     const sp = spieler[pos % spieler.length];
-    freigeschaltet = 0; entschieden = false;
+    freigeschaltet = 0; entschieden = false; modus = 'frei';
     optionen = optionenBauen(lied);
     $('zaehler').textContent = `${pos + 1} / ${lieder.length}`;
     $('dran').innerHTML = '';
@@ -342,7 +418,7 @@
       try { const d = await deezer(`/track/${lied.id}`); if (d && d.preview) { lied.preview = d.preview; audio.src = d.preview; audio.dataset.neu = '1'; } } catch (e) {}
     };
     meldung(T.tippe);
-    leiterZeichnen(); optionenZeichnen();
+    leiterZeichnen(); bereichZeichnen();
   }
 
   function anhalten() {
@@ -355,7 +431,7 @@
     if (!audio) return;
     anhalten();
     if (!entschieden && i + 1 > freigeschaltet) freigeschaltet = i + 1;
-    leiterZeichnen(); optionenZeichnen();
+    leiterZeichnen(); bereichZeichnen();
     if (!entschieden && meldungIstHinweis()) meldung('');
     const dauer = STUFEN[i].s * 1000;
     audio.currentTime = 0; audio.volume = 1;
@@ -378,15 +454,14 @@
     entschieden = true;
     $('passen').disabled = true;
     $('weiter').disabled = false;
-    leiterZeichnen(); optionenZeichnen();
+    leiterZeichnen(); bereichZeichnen();
   }
 
-  function antworten(o) {
+  function werten(richtig, faktor) {
     if (entschieden || freigeschaltet === 0) return;
-    o.gewaehlt = true;
     const sp = spieler[pos % spieler.length];
-    if (o.richtig) {
-      const p = STUFEN[freigeschaltet - 1].p;
+    if (richtig) {
+      const p = STUFEN[freigeschaltet - 1].p * faktor;
       sp.punkte += p;
       meldung(T.richtig(pktText(p)), 'gut');
       haptik('notificationOccurred', 'success');
@@ -394,12 +469,14 @@
       meldung(T.falsch, 'schlecht');
       haptik('notificationOccurred', 'error');
     }
+    modus = 'fertig';
     entscheiden();
   }
 
   $('passen').onclick = () => {
     if (entschieden) return;
     meldung(T.gepasst, 'schlecht');
+    modus = 'fertig';
     entscheiden();
   };
 
