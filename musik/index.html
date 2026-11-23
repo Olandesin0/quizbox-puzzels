@@ -154,7 +154,7 @@
 <script>
 (() => {
   // ==== Einstellung: Adresse des n8n-Webhooks "Quizbox Daten" (Production URL) ====
-  const DATEN_URL = 'https://raimond.app.n8n.cloud/webhook-test/quizbox-daten';
+  const DATEN_URL = 'https://raimond.app.n8n.cloud/webhook/quizbox-daten';
 
   const tg = window.Telegram && window.Telegram.WebApp;
   if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor('#26282b'); tg.setBackgroundColor('#26282b'); } catch (e) {} }
@@ -324,7 +324,7 @@
     $('start-meldung').textContent = T.laden;
     try {
       fragen = modus === 'cover' ? await coverLaden() : await introLaden();
-    } catch (e) { $('start-meldung').textContent = e.message === 'daten' ? T.datenFehler : T.fehler; return; }
+    } catch (e) { $('start-meldung').textContent = e.message === 'daten' ? `${T.datenFehler} (${e.grund})` : T.fehler; return; }
     if (!fragen.length) { $('start-meldung').textContent = T.zuWenig; return; }
     $('start-meldung').textContent = T.bereit(fragen.length);
     $('los').disabled = false;
@@ -348,12 +348,18 @@
   }
 
   async function coverLaden() {
-    let daten;
+    let daten, grund = '';
     try {
-      const r = await fetch(`${DATEN_URL}?typ=cover&ids=${ids.join(',')}`);
-      daten = await r.json();
-      if (!daten || !Array.isArray(daten.paare)) throw new Error();
-    } catch (e) { throw new Error('daten'); }
+      if (DATEN_URL.includes('DEIN-NAME')) { grund = 'DATEN_URL nicht eingetragen'; throw new Error(); }
+      const r = await fetch(`${DATEN_URL}?typ=cover&ids=${ids.join(',')}`, { cache: 'no-store' });
+      if (!r.ok) { grund = `HTTP ${r.status}`; throw new Error(); }
+      const text = await r.text();
+      try { daten = JSON.parse(text); } catch (e) { grund = 'keine JSON-Antwort'; throw new Error(); }
+      if (typeof daten === 'string') daten = JSON.parse(daten);          // n8n schickt das JSON manchmal als Text
+      if (Array.isArray(daten)) daten = daten[0];
+      if (daten && daten.json) daten = daten.json;
+      if (!daten || !Array.isArray(daten.paare)) { grund = 'keine Paare in der Antwort'; throw new Error(); }
+    } catch (e) { const f = new Error('daten'); f.grund = grund || (e && e.message) || 'Netzwerk/CORS'; throw f; }
     const paare = daten.paare.filter(p => p.original && p.cover && p.original.deezer && p.cover.deezer);
     const tracks = await Promise.allSettled(paare.flatMap(p => [deezer(`/track/${p.original.deezer}`), deezer(`/track/${p.cover.deezer}`)]));
     const gut = [];
