@@ -370,7 +370,7 @@
     });
     const pool = (daten.kuenstler_pool || []).concat(RESERVE_KUENSTLER);
     // Varianten verteilen: 40 % zwei Versionen, 40 % wer zuerst, 20 % Original oder Cover
-    const typen = mischen(gut.map((_, i) => ['ab', 'wer', 'ab', 'wer', 'oc'][i % 5]));
+    const typen = mischen(gut.map((_, i) => ['wer', 'ab', 'wer', 'wer', 'oc', 'wer', 'ab', 'wer', 'ab', 'wer'][i % 10]));
     return mischen(gut).map((p, i) => ({ typ: typen[i], paar: p, pool }));
   }
 
